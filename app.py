@@ -844,7 +844,7 @@ def plot_detection_factor_radar(detection_factors):
         font=dict(color='#555555')  # Gris foncé pour tout le texte
     )
     
-    st.plotly_chart(fig, use_container_width=True, key=generate_unique_key("detection_factor_radar"))
+    st.plotly_chart(fig, width="stretch", key=generate_unique_key("detection_factor_radar"))
 
 def plot_category_distribution_radar(df, samples_list, confidence_levels=None):
     """Radar de distribution des catégories par échantillon avec filtrage par niveau de confiance et couleurs visibles dans les deux thèmes"""
@@ -896,7 +896,7 @@ def plot_category_distribution_radar(df, samples_list, confidence_levels=None):
         font=dict(color='#555555')  # Gris foncé pour tout le texte
     )
     
-    st.plotly_chart(fig, use_container_width=True, key=generate_unique_key("category_distribution_radar"))
+    st.plotly_chart(fig, width="stretch", key=generate_unique_key("category_distribution_radar"))
 
 # CORRECTION MAJEURE : Fonction pour gérer les callbacks des filtres
 def update_bubble_levels_sample(sample_name):
@@ -981,7 +981,7 @@ def plot_level1_bubble_plot_sample(df, sample_name):
         yaxis_title=f"Molécules (Niveaux {selected_levels})"
     )
     
-    st.plotly_chart(fig, use_container_width=True, key=f"level_bubble_{sample_name}_corrected")
+    st.plotly_chart(fig, width="stretch", key=f"level_bubble_{sample_name}_corrected")
     
     # Afficher quelques statistiques
     col1, col2, col3 = st.columns(3)
@@ -1176,7 +1176,7 @@ def analyze_ecotoxicity(compound_data):
                              annotation_text=f"Seuil: {level}",
                              line_color=DISTINCT_COLORS[(i+3) % len(DISTINCT_COLORS)])
         
-        st.plotly_chart(fig, use_container_width=True, key=generate_unique_key(f"ecotox_comparison_{compound_data.get('match_name', 'unknown')}"))
+        st.plotly_chart(fig, width="stretch", key=generate_unique_key(f"ecotox_comparison_{compound_data.get('match_name', 'unknown')}"))
 
 def plot_ms2_comparison_enhanced(compound_data):
     """Version améliorée de la comparaison des spectres MS2 avec seulement 2 couleurs"""
@@ -1256,7 +1256,7 @@ def plot_ms2_comparison_enhanced(compound_data):
         hovermode='x unified'
     )
     
-    st.plotly_chart(fig, use_container_width=True, key=generate_unique_key(f"ms2_comparison_{compound_data.get('match_name', 'unknown')}"))
+    st.plotly_chart(fig, width="stretch", key=generate_unique_key(f"ms2_comparison_{compound_data.get('match_name', 'unknown')}"))
     
     # Calcul et affichage des métriques de similarité
     if exp_mz and ref_mz:
@@ -1442,7 +1442,7 @@ def plot_confidence_comparison_across_samples(df, samples_list, selected_levels=
     )
     
     fig.update_layout(height=500)
-    st.plotly_chart(fig, use_container_width=True, key=generate_unique_key("confidence_comparison_fixed"))
+    st.plotly_chart(fig, width="stretch", key=generate_unique_key("confidence_comparison_fixed"))
 
 def plot_level1_bubble_plot(df, samples_list):
     """Bubble plot pour les molécules avec choix de niveaux de confiance CORRIGÉ et PERSISTANT"""
@@ -1528,7 +1528,7 @@ def plot_level1_bubble_plot(df, samples_list):
         yaxis={'categoryorder': 'total ascending'}
     )
     
-    st.plotly_chart(fig, use_container_width=True, key=generate_unique_key("level_bubble_plot_fixed"))
+    st.plotly_chart(fig, width="stretch", key=generate_unique_key("level_bubble_plot_fixed"))
 
 def calculate_jaccard_similarity(df, samples_list):
     """Calcule la similarité de Jaccard entre échantillons"""
@@ -1648,7 +1648,7 @@ def plot_hierarchical_clustering(df, samples_list, confidence_levels=None, selec
         height=500
     )
     
-    st.plotly_chart(fig, use_container_width=True, key=generate_unique_key("hierarchical_clustering"))
+    st.plotly_chart(fig, width="stretch", key=generate_unique_key("hierarchical_clustering"))
     
     # Afficher la matrice de Jaccard
     st.subheader("Matrice de similarité de Jaccard")
@@ -1659,7 +1659,7 @@ def plot_hierarchical_clustering(df, samples_list, confidence_levels=None, selec
         title=f"Similarité de Jaccard entre échantillons{' - Filtré par niveau(x) ' + str(confidence_levels) if confidence_levels else ''}",
         color_continuous_scale='Viridis'
     )
-    st.plotly_chart(fig_heatmap, use_container_width=True, key=generate_unique_key("jaccard_heatmap"))
+    st.plotly_chart(fig_heatmap, width="stretch", key=generate_unique_key("jaccard_heatmap"))
 
 # CORRECTION DU PROBLÈME D'ACP - Fonction corrigée pour la direction de l'ACP
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -1874,7 +1874,7 @@ def plot_3d_pca(matrix_df, analysis_type="Analyse par individus"):
         fig.update_traces(textposition="top center", marker=dict(size=12))
         fig.update_layout(height=400, yaxis=dict(showticklabels=False))
     
-    st.plotly_chart(fig, use_container_width=True, key=generate_unique_key("pca_plot"))
+    st.plotly_chart(fig, width="stretch", key=generate_unique_key("pca_plot"))
 
 def plot_tsne_analysis(matrix_df, analysis_type="Analyse par individus"):
     """Analyse t-SNE avec gestion d'erreur et PERSISTANCE CORRIGÉE"""
@@ -1941,7 +1941,7 @@ def plot_tsne_analysis(matrix_df, analysis_type="Analyse par individus"):
         
         fig.update_traces(textposition="top center", marker=dict(size=12))
         fig.update_layout(height=600)
-        st.plotly_chart(fig, use_container_width=True, key=generate_unique_key("tsne_plot"))
+        st.plotly_chart(fig, width="stretch", key=generate_unique_key("tsne_plot"))
         
     except Exception as e:
         st.error(f"❌ Erreur t-SNE : {str(e)}")
@@ -1996,7 +1996,7 @@ def perform_pca_analysis(matrix_df, analysis_type="Analyse par individus"):
             xaxis_title="Composante principale",
             yaxis_title="Variance expliquée (%)"
         )
-        st.plotly_chart(fig1, use_container_width=True, key=generate_unique_key("pca_variance_plot"))
+        st.plotly_chart(fig1, width="stretch", key=generate_unique_key("pca_variance_plot"))
     
     with col2:
         # Score plot PCA CORRIGÉ - AVEC GESTION DU CAS 1D
@@ -2017,7 +2017,7 @@ def perform_pca_analysis(matrix_df, analysis_type="Analyse par individus"):
             )
             fig2.update_traces(textposition="top center", marker=dict(size=12))
             fig2.update_layout(height=500)
-            st.plotly_chart(fig2, use_container_width=True, key=generate_unique_key("pca_score_plot"))
+            st.plotly_chart(fig2, width="stretch", key=generate_unique_key("pca_score_plot"))
         
         elif X_pca.shape[1] == 1:
             # PCA 1D - AJOUT DE CE CAS MANQUANT
@@ -2031,7 +2031,7 @@ def perform_pca_analysis(matrix_df, analysis_type="Analyse par individus"):
             )
             fig2.update_traces(textposition="top center", marker=dict(size=12))
             fig2.update_layout(height=400, yaxis=dict(showticklabels=False))
-            st.plotly_chart(fig2, use_container_width=True, key=generate_unique_key("pca_score_plot_1d"))
+            st.plotly_chart(fig2, width="stretch", key=generate_unique_key("pca_score_plot_1d"))
         
         else:
             st.warning("❌ Aucune composante PCA disponible pour l'affichage")
@@ -2060,7 +2060,7 @@ def perform_pca_analysis(matrix_df, analysis_type="Analyse par individus"):
                 top_pc1 = loadings_df.reindex(loadings_df['PC1'].abs().sort_values(ascending=False).index).head(15)
                 st.dataframe(
                     top_pc1[['PC1', 'Distance']].round(4),
-                    use_container_width=True
+                    width="stretch"
                 )
             
             with col2:
@@ -2068,7 +2068,7 @@ def perform_pca_analysis(matrix_df, analysis_type="Analyse par individus"):
                 top_pc2 = loadings_df.reindex(loadings_df['PC2'].abs().sort_values(ascending=False).index).head(15)
                 st.dataframe(
                     top_pc2[['PC2', 'Distance']].round(4),
-                    use_container_width=True
+                    width="stretch"
                 )
             
             # Top contributeurs globaux (distance maximale à l'origine)
@@ -2077,7 +2077,7 @@ def perform_pca_analysis(matrix_df, analysis_type="Analyse par individus"):
             top_discriminants = loadings_df.nlargest(20, 'Distance')
             st.dataframe(
                 top_discriminants[['PC1', 'PC2', 'Distance']].round(4),
-                use_container_width=True
+                width="stretch"
             )
         else:
             # Pour 1 composante seulement
@@ -2085,7 +2085,7 @@ def perform_pca_analysis(matrix_df, analysis_type="Analyse par individus"):
             top_pc1 = loadings_df.reindex(loadings_df['PC1'].abs().sort_values(ascending=False).index).head(20)
             st.dataframe(
                 top_pc1[['PC1']].round(4),
-                use_container_width=True
+                width="stretch"
             )
     
     # Affichage des métriques
@@ -2134,7 +2134,7 @@ def plot_correlation_heatmap(matrix_df, analysis_type="Analyse par individus"):
         )
         
         fig.update_layout(height=600)
-        st.plotly_chart(fig, use_container_width=True, key=generate_unique_key("correlation_heatmap"))
+        st.plotly_chart(fig, width="stretch", key=generate_unique_key("correlation_heatmap"))
         
         return corr_matrix
         
@@ -2237,7 +2237,7 @@ def perform_kmeans_clustering(matrix_df, analysis_type="Analyse par individus"):
             fig.update_traces(textposition="top center", marker=dict(size=12))
             fig.update_layout(height=400, yaxis=dict(showticklabels=False))
         
-        st.plotly_chart(fig, use_container_width=True, key=generate_unique_key("kmeans_plot"))
+        st.plotly_chart(fig, width="stretch", key=generate_unique_key("kmeans_plot"))
         
         # Afficher les clusters
         st.subheader(f"📋 Composition des clusters")
@@ -2296,7 +2296,7 @@ def plot_boxplot_by_category(df, samples_list):
         showlegend=False
     )
     
-    st.plotly_chart(fig, use_container_width=True, key=generate_unique_key("boxplot_categories"))
+    st.plotly_chart(fig, width="stretch", key=generate_unique_key("boxplot_categories"))
 
 # NOUVELLE FONCTION : Boxplot par catégorie pour un échantillon spécifique
 def plot_sample_boxplot_by_category(df, sample_name):
@@ -2358,7 +2358,7 @@ def plot_sample_boxplot_by_category(df, sample_name):
             xaxis_title="Catégorie",
             yaxis_title="Nombre de molécules"
         )
-        st.plotly_chart(fig, use_container_width=True, key=generate_unique_key(f"category_counts_{sample_name}"))
+        st.plotly_chart(fig, width="stretch", key=generate_unique_key(f"category_counts_{sample_name}"))
         return
     
     # Filtrer les données pour les catégories valides
@@ -2387,7 +2387,7 @@ def plot_sample_boxplot_by_category(df, sample_name):
         yaxis_title="log10(Intensité spécifique)"
     )
     
-    st.plotly_chart(fig, use_container_width=True, key=generate_unique_key(f"sample_boxplot_categories_{sample_name}"))
+    st.plotly_chart(fig, width="stretch", key=generate_unique_key(f"sample_boxplot_categories_{sample_name}"))
     
     # Afficher quelques statistiques
     col1, col2, col3 = st.columns(3)
@@ -2601,7 +2601,7 @@ def plot_volcano_plot(matrix_df):
                   annotation_text=f"FC = {1/fc_threshold:.1f}")
     
     fig.update_layout(height=600)
-    st.plotly_chart(fig, use_container_width=True, key=generate_unique_key("volcano_plot"))
+    st.plotly_chart(fig, width="stretch", key=generate_unique_key("volcano_plot"))
     
     # Statistiques du volcano plot
     n_up = len(volcano_data[volcano_data['Significance'].str.contains('↑')])
@@ -2634,7 +2634,7 @@ def plot_volcano_plot(matrix_df):
                        'Group1_mean', 'Group2_mean', 'Significance']
         st.dataframe(
             significant_markers[display_cols].round(4),
-            use_container_width=True
+            width="stretch"
         )
         
         # Export des marqueurs significatifs
@@ -2750,7 +2750,7 @@ def plot_complete_pca_with_loadings(matrix_df, analysis_type="Analyse par indivi
             )
             fig_samples.update_traces(textposition="top center", marker=dict(size=12))
             fig_samples.update_layout(height=500)
-            st.plotly_chart(fig_samples, use_container_width=True, key=generate_unique_key("pca_samples_complete"))
+            st.plotly_chart(fig_samples, width="stretch", key=generate_unique_key("pca_samples_complete"))
         
         with col2:
             # CORRECTION : Vérifier que PC2 existe avant de l'utiliser
@@ -2808,7 +2808,7 @@ def plot_complete_pca_with_loadings(matrix_df, analysis_type="Analyse par indivi
                     yaxis=dict(range=[-1.1, 1.1])
                 )
                 
-                st.plotly_chart(fig_loadings, use_container_width=True, key=generate_unique_key("pca_loadings_complete"))
+                st.plotly_chart(fig_loadings, width="stretch", key=generate_unique_key("pca_loadings_complete"))
             else:
                 st.warning(f"⚠️ {pc_y} n'est pas disponible. Affichage en 1D uniquement.")
     
@@ -2831,7 +2831,7 @@ def plot_complete_pca_with_loadings(matrix_df, analysis_type="Analyse par indivi
         )
         fig_samples.update_traces(textposition="top center", marker=dict(size=12))
         fig_samples.update_layout(height=400, yaxis=dict(showticklabels=False))
-        st.plotly_chart(fig_samples, use_container_width=True, key=generate_unique_key("pca_samples_1d"))
+        st.plotly_chart(fig_samples, width="stretch", key=generate_unique_key("pca_samples_1d"))
         
         # Loadings 1D
         if analysis_type == "Analyse par marqueurs":
@@ -2847,7 +2847,7 @@ def plot_complete_pca_with_loadings(matrix_df, analysis_type="Analyse par indivi
             labels={'x': f'PC1 ({variance_ratio[0]*100:.1f}%)', 'y': 'Position'}
         )
         fig_loadings.update_layout(height=400, yaxis=dict(showticklabels=False))
-        st.plotly_chart(fig_loadings, use_container_width=True, key=generate_unique_key("pca_loadings_1d"))
+        st.plotly_chart(fig_loadings, width="stretch", key=generate_unique_key("pca_loadings_1d"))
     
     # Variance expliquée par toutes les composantes
     st.subheader("📊 Variance expliquée par les composantes principales")
@@ -2882,7 +2882,7 @@ def plot_complete_pca_with_loadings(matrix_df, analysis_type="Analyse par indivi
         height=400
     )
     
-    st.plotly_chart(fig_variance, use_container_width=True, key=generate_unique_key("pca_variance_complete"))
+    st.plotly_chart(fig_variance, width="stretch", key=generate_unique_key("pca_variance_complete"))
     
     # Tableau des top contributeurs (seulement si plus d'1 composante)
     if n_components > 1 and 'Distance' in loadings_df.columns:
@@ -2895,7 +2895,7 @@ def plot_complete_pca_with_loadings(matrix_df, analysis_type="Analyse par indivi
             top_pc_x = loadings_df.reindex(loadings_df[pc_x].abs().sort_values(ascending=False).index).head(15)
             st.dataframe(
                 top_pc_x[[pc_x, 'Distance']].round(4),
-                use_container_width=True
+                width="stretch"
             )
         
         with col2:
@@ -2903,7 +2903,7 @@ def plot_complete_pca_with_loadings(matrix_df, analysis_type="Analyse par indivi
             top_pc_y = loadings_df.reindex(loadings_df[pc_y].abs().sort_values(ascending=False).index).head(15)
             st.dataframe(
                 top_pc_y[[pc_y, 'Distance']].round(4),
-                use_container_width=True
+                width="stretch"
             )
         
         # Top contributeurs globaux (distance maximale à l'origine)
@@ -2912,14 +2912,14 @@ def plot_complete_pca_with_loadings(matrix_df, analysis_type="Analyse par indivi
         top_discriminants = loadings_df.nlargest(20, 'Distance')
         st.dataframe(
             top_discriminants[[pc_x, pc_y, 'Distance']].round(4),
-            use_container_width=True
+            width="stretch"
         )
     else:
         st.subheader("🏆 Top contributeurs à PC1")
         top_pc1 = loadings_df.reindex(loadings_df['PC1'].abs().sort_values(ascending=False).index).head(20)
         st.dataframe(
             top_pc1[['PC1']].round(4),
-            use_container_width=True
+            width="stretch"
         )
     
     # Export des loadings
@@ -2997,7 +2997,7 @@ def plot_markers_pca_with_projections(matrix_df, significant_markers_df=None):
             )
             fig_samples.update_traces(textposition="top center", marker=dict(size=12))
             fig_samples.update_layout(height=500)
-            st.plotly_chart(fig_samples, use_container_width=True, key=generate_unique_key("pca_samples_markers"))
+            st.plotly_chart(fig_samples, width="stretch", key=generate_unique_key("pca_samples_markers"))
     
     with col2:
         # Projection des marqueurs avec distinction significatifs/non-significatifs
@@ -3054,7 +3054,7 @@ def plot_markers_pca_with_projections(matrix_df, significant_markers_df=None):
                 height=500
             )
             
-            st.plotly_chart(fig_loadings, use_container_width=True, key=generate_unique_key("pca_loadings_markers"))
+            st.plotly_chart(fig_loadings, width="stretch", key=generate_unique_key("pca_loadings_markers"))
         else:
             # Affichage 1D si seulement PC1 disponible
             st.info("📊 Seule PC1 disponible - Affichage en 1D")
@@ -3069,7 +3069,7 @@ def plot_markers_pca_with_projections(matrix_df, significant_markers_df=None):
                 color_discrete_map={True: '#FF6B6B', False: 'lightgray'}
             )
             fig_loadings_1d.update_layout(height=400, yaxis=dict(showticklabels=False))
-            st.plotly_chart(fig_loadings_1d, use_container_width=True, key=generate_unique_key("pca_loadings_markers_1d"))
+            st.plotly_chart(fig_loadings_1d, width="stretch", key=generate_unique_key("pca_loadings_markers_1d"))
     
     # Tableau des top contributeurs parmi les marqueurs significatifs
     st.subheader("🏆 Top contributeurs parmi les marqueurs significatifs")
@@ -3088,7 +3088,7 @@ def plot_markers_pca_with_projections(matrix_df, significant_markers_df=None):
                 display_cols = ['PC1', 'Distance']
             st.dataframe(
                 top_significant[display_cols].round(4),
-                use_container_width=True
+                width="stretch"
             )
         
         with col2:
@@ -3103,7 +3103,7 @@ def plot_markers_pca_with_projections(matrix_df, significant_markers_df=None):
                 color_continuous_scale='Viridis'
             )
             fig_contrib.update_layout(height=400, showlegend=False)
-            st.plotly_chart(fig_contrib, use_container_width=True, key=generate_unique_key("contrib_significant_markers"))
+            st.plotly_chart(fig_contrib, width="stretch", key=generate_unique_key("contrib_significant_markers"))
     
     # Comparaison: significatifs vs non-significatifs
     st.subheader("📊 Comparaison contributions: significatifs vs autres")
@@ -3152,7 +3152,7 @@ def plot_markers_pca_with_projections(matrix_df, significant_markers_df=None):
             height=400
         )
         
-        st.plotly_chart(fig_dist, use_container_width=True, key=generate_unique_key("distribution_contributions"))
+        st.plotly_chart(fig_dist, width="stretch", key=generate_unique_key("distribution_contributions"))
 
 def plot_markers_heatmap(matrix_df, significant_markers_df=None):
     """Heatmap des marqueurs significatifs"""
@@ -3200,7 +3200,7 @@ def plot_markers_heatmap(matrix_df, significant_markers_df=None):
     )
     
     fig.update_layout(height=max(400, len(selected_features) * 15))
-    st.plotly_chart(fig, use_container_width=True, key=generate_unique_key("markers_heatmap"))
+    st.plotly_chart(fig, width="stretch", key=generate_unique_key("markers_heatmap"))
 
 def show_confidence_levels_table():
     """Affiche le tableau des niveaux de confiance avec un style amélioré"""
@@ -3322,7 +3322,7 @@ def show_home_page():
     ])
     
     # Affichage du tableau
-    st.dataframe(db_df, use_container_width=True)
+    st.dataframe(db_df, width="stretch")
     
     # Graphique de la distribution
     fig_db = px.pie(
@@ -3333,7 +3333,7 @@ def show_home_page():
         color_discrete_sequence=DISTINCT_COLORS[:10]
     )
     fig_db.update_layout(height=500)
-    st.plotly_chart(fig_db, use_container_width=True, key=generate_unique_key("database_distribution_pie"))
+    st.plotly_chart(fig_db, width="stretch", key=generate_unique_key("database_distribution_pie"))
     
     # Métriques de la base
     col1, col2, col3, col4 = st.columns(4)
@@ -3554,7 +3554,7 @@ def main():
             
             # Créer un bouton stylé
             if st.button(f"{icon}\n{label}", key=f"nav_{tab_id}", 
-                        use_container_width=True,
+                        width="stretch",
                         help=f"Aller à {label}"):
                 st.session_state.active_tab = tab_id
                 selected_tab = tab_name
@@ -3675,7 +3675,7 @@ def main():
             with col1:
                 conf_fig = plot_confidence_levels_distribution(features_df)
                 if conf_fig:
-                    st.plotly_chart(conf_fig, use_container_width=True, key=generate_unique_key("overview_confidence_dist"))
+                    st.plotly_chart(conf_fig, width="stretch", key=generate_unique_key("overview_confidence_dist"))
                 
                 if 'mz_error_ppm' in features_df.columns:
                     error_data = features_df[features_df['mz_error_ppm'].notna()]
@@ -3690,7 +3690,7 @@ def main():
                         )
                         fig_error.add_vline(x=5, line_dash="dash", line_color=DISTINCT_COLORS[1],
                                           annotation_text="Seuil 5 ppm")
-                        st.plotly_chart(fig_error, use_container_width=True, key=generate_unique_key("overview_mz_error"))
+                        st.plotly_chart(fig_error, width="stretch", key=generate_unique_key("overview_mz_error"))
             
             with col2:
                 if 'ms2_similarity_score' in features_df.columns:
@@ -3707,7 +3707,7 @@ def main():
                                         annotation_text="Excellent (≥0.7)")
                         fig_ms2.add_vline(x=0.4, line_dash="dash", line_color=DISTINCT_COLORS[3],
                                         annotation_text="Bon (≥0.4)")
-                        st.plotly_chart(fig_ms2, use_container_width=True, key=generate_unique_key("overview_ms2_dist"))
+                        st.plotly_chart(fig_ms2, width="stretch", key=generate_unique_key("overview_ms2_dist"))
             
             st.markdown("---")
             samples_list = list(set([s for samples in features_df['samples'].dropna() 
@@ -3751,7 +3751,7 @@ def main():
                         log_y=True,
                         color_discrete_sequence=DISTINCT_COLORS
                     )
-                    st.plotly_chart(fig_mz, use_container_width=True, key=generate_unique_key(f"sample_mz_dist_{selected_sample}"))
+                    st.plotly_chart(fig_mz, width="stretch", key=generate_unique_key(f"sample_mz_dist_{selected_sample}"))
                 
                 with col2:
                     fig_rt = px.scatter(
@@ -3765,7 +3765,7 @@ def main():
                         log_y=True,
                         color_discrete_sequence=DISTINCT_COLORS
                     )
-                    st.plotly_chart(fig_rt, use_container_width=True, key=generate_unique_key(f"sample_rt_profile_{selected_sample}"))
+                    st.plotly_chart(fig_rt, width="stretch", key=generate_unique_key(f"sample_rt_profile_{selected_sample}"))
                 
                 st.markdown("---")
                 plot_sample_boxplot_by_category(features_df, selected_sample)
@@ -3853,7 +3853,7 @@ def main():
                         # Affichage avec sélection
                         selected_indices = st.dataframe(
                             display_df.round(4),
-                            use_container_width=True,
+                            width="stretch",
                             on_select="rerun",
                             selection_mode="single-row"
                         )
@@ -4064,9 +4064,9 @@ def main():
                                             color_discrete_sequence=DISTINCT_COLORS[:len(sample_names)]
                                         )
                                         fig_intensities.update_layout(showlegend=False)
-                                        st.plotly_chart(fig_intensities, use_container_width=True, key=generate_unique_key(f"molecule_intensities_{selected_molecule}"))
+                                        st.plotly_chart(fig_intensities, width="stretch", key=generate_unique_key(f"molecule_intensities_{selected_molecule}"))
                                         
-                                        st.dataframe(intensity_df, use_container_width=True)
+                                        st.dataframe(intensity_df, width="stretch")
                                 except:
                                     st.info("Données d'intensités par échantillon non disponibles")
                             
@@ -4211,7 +4211,7 @@ def main():
                     filtered_detection_df.style.format({
                         'Facteur_détection_%': '{:.2f}%'
                     }).background_gradient(subset=['Facteur_détection_%'], cmap='RdYlGn'),
-                    use_container_width=True
+                    width="stretch"
                 )
                 
                 st.subheader("🏆 Top 5 catégories les mieux détectées par échantillon")
@@ -4230,7 +4230,7 @@ def main():
                             color_continuous_scale='Viridis'
                         )
                         fig.update_layout(showlegend=False, height=400)
-                        st.plotly_chart(fig, use_container_width=True, key=generate_unique_key(f"top5_categories_{i}"))
+                        st.plotly_chart(fig, width="stretch", key=generate_unique_key(f"top5_categories_{i}"))
             
             st.subheader("📊 Distribution des catégories par échantillon")
             
@@ -4308,7 +4308,7 @@ def main():
                 stats_df = pd.DataFrame(stats_data)
                 
                 st.subheader("📊 Tableau comparatif des échantillons")
-                st.dataframe(stats_df.round(2), use_container_width=True)
+                st.dataframe(stats_df.round(2), width="stretch")
                 
                 # Visualisations
                 col1, col2 = st.columns(2)
@@ -4322,7 +4322,7 @@ def main():
                         barmode='group',
                         color_discrete_sequence=DISTINCT_COLORS[:3]
                     )
-                    st.plotly_chart(fig1, use_container_width=True, key=generate_unique_key("comparison_features_vs_identified"))
+                    st.plotly_chart(fig1, width="stretch", key=generate_unique_key("comparison_features_vs_identified"))
                 
                 with col2:
                     fig2 = px.bar(
@@ -4334,7 +4334,7 @@ def main():
                         color_continuous_scale='Viridis'
                     )
                     fig2.update_layout(showlegend=False)
-                    st.plotly_chart(fig2, use_container_width=True, key=generate_unique_key("comparison_identification_rate"))
+                    st.plotly_chart(fig2, width="stretch", key=generate_unique_key("comparison_identification_rate"))
                 
                 st.subheader("📊 Distribution des niveaux de confiance par échantillon")
                 plot_confidence_comparison_across_samples(features_df, samples_list)
@@ -4390,7 +4390,7 @@ def main():
                         font=dict(color='#555555')
                     )
                     
-                    st.plotly_chart(fig_radar, use_container_width=True, key=generate_unique_key("comparison_radar_multicriteria"))
+                    st.plotly_chart(fig_radar, width="stretch", key=generate_unique_key("comparison_radar_multicriteria"))
                 
                 st.subheader("🔗 Similarité de Jaccard et Clustering hiérarchique")
 
@@ -4676,7 +4676,7 @@ def main():
                                     labels={'x': 'Coefficient de corrélation', 'y': 'Fréquence'},
                                     color_discrete_sequence=DISTINCT_COLORS
                                 )
-                                st.plotly_chart(fig_corr_dist, use_container_width=True, key=generate_unique_key("correlation_distribution"))
+                                st.plotly_chart(fig_corr_dist, width="stretch", key=generate_unique_key("correlation_distribution"))
                             else:
                                 st.info(f"📊 Une seule valeur de corrélation disponible : {corr_values[0]:.3f}")
             
@@ -4744,7 +4744,7 @@ def main():
                         )
                         
                         fig.update_layout(height=600)
-                        st.plotly_chart(fig, use_container_width=True, key=generate_unique_key("advanced_heatmap"))
+                        st.plotly_chart(fig, width="stretch", key=generate_unique_key("advanced_heatmap"))
                         
                     except Exception as e:
                         st.error(f"❌ Erreur lors de la transformation des données : {str(e)}")
@@ -4784,7 +4784,7 @@ def main():
                             )
                             
                             fig_dist.update_layout(height=600)
-                            st.plotly_chart(fig_dist, use_container_width=True, key=generate_unique_key("distance_heatmap"))
+                            st.plotly_chart(fig_dist, width="stretch", key=generate_unique_key("distance_heatmap"))
                             
                         except Exception as e:
                             st.error(f"❌ Erreur lors du calcul des distances : {str(e)}")
@@ -5048,7 +5048,7 @@ def main():
             if st.session_state.reports_aggregate and st.session_state.reports_identified_only:
                 info_text += " (molécules uniques avec adduits groupés et intensités spécifiques)"
             st.info(info_text)
-            st.dataframe(export_df.head(10), use_container_width=True)
+            st.dataframe(export_df.head(10), width="stretch")
             
             # Boutons d'export
             col1, col2, col3 = st.columns(3)
@@ -5171,7 +5171,7 @@ def main():
                     height=400
                 )
                 
-                st.plotly_chart(fig, use_container_width=True, key=generate_unique_key("confidence_funnel_unique"))
+                st.plotly_chart(fig, width="stretch", key=generate_unique_key("confidence_funnel_unique"))
                 
                 st.subheader("🔍 Analyse détaillée par niveau")
                 
@@ -5220,9 +5220,9 @@ def main():
                             top_molecules_display['adduits'] = aggregated_level.nlargest(10, 'total_intensity')['match_adduct'].apply(
                                 lambda x: ', '.join(x) if isinstance(x, list) else str(x)
                             )
-                            st.dataframe(top_molecules_display.round(3), use_container_width=True)
+                            st.dataframe(top_molecules_display.round(3), width="stretch")
                         else:
-                            st.dataframe(top_molecules.round(3), use_container_width=True)
+                            st.dataframe(top_molecules.round(3), width="stretch")
                 
                 st.subheader(f"📈 Analyse des critères - Niveau {st.session_state.confidence_selected_level}")
                 
@@ -5239,7 +5239,7 @@ def main():
                             color_discrete_sequence=DISTINCT_COLORS
                         )
                         fig_error.add_vline(x=5, line_dash="dash", line_color=DISTINCT_COLORS[1])
-                        st.plotly_chart(fig_error, use_container_width=True, key=generate_unique_key(f"mz_error_dist_level_{st.session_state.confidence_selected_level}"))
+                        st.plotly_chart(fig_error, width="stretch", key=generate_unique_key(f"mz_error_dist_level_{st.session_state.confidence_selected_level}"))
                 
                 with col2:
                     if 'ms2_similarity_score' in level_data.columns and not level_data.empty:
@@ -5255,7 +5255,7 @@ def main():
                             )
                             fig_ms2.add_vline(x=0.7, line_dash="dash", line_color=DISTINCT_COLORS[2])
                             fig_ms2.add_vline(x=0.4, line_dash="dash", line_color=DISTINCT_COLORS[3])
-                            st.plotly_chart(fig_ms2, use_container_width=True, key=generate_unique_key(f"ms2_score_dist_level_{st.session_state.confidence_selected_level}"))
+                            st.plotly_chart(fig_ms2, width="stretch", key=generate_unique_key(f"ms2_score_dist_level_{st.session_state.confidence_selected_level}"))
         else:
             show_confidence_levels_table()
 
