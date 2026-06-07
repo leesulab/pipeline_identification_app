@@ -26,6 +26,10 @@ import hashlib
 import time
 import urllib.parse
 import uuid
+
+# Import de la page pipeline
+from pages.pipeline import render_pipeline_page
+
 warnings.filterwarnings('ignore')
 
 # Configuration de la page
@@ -81,6 +85,58 @@ DISTINCT_COLORS = [
     '#D5A6BD',  # Rose poudré
     '#AED6F1'   # Bleu poudré
 ]
+
+CONFIDENCE_LEVEL_META = {
+    1: {"label": "Niveau 1 (Confirmé)", "color": "#1B9E77"},
+    2: {"label": "Niveau 2 (Très probable)", "color": "#66A61E"},
+    3: {"label": "Niveau 3 (Probable)", "color": "#E6AB02"},
+    4: {"label": "Niveau 4 (Exploratoire)", "color": "#D95F02"},
+    5: {"label": "Niveau 5 (Incertain)", "color": "#7570B3"},
+}
+
+def get_available_confidence_levels(df):
+    """Retourne les niveaux de confiance réellement présents dans le dataframe."""
+    if df is None or 'confidence_level' not in df.columns:
+        return []
+    levels = pd.to_numeric(df['confidence_level'], errors='coerce').dropna().astype(int).unique().tolist()
+    return sorted(levels)
+
+def sanitize_confidence_selection(selected_levels, available_levels, fallback=None):
+    """Filtre la sélection de niveaux pour rester compatible avec les options disponibles."""
+    if fallback is None:
+        fallback = [1, 2, 3]
+    if not available_levels:
+        return []
+
+    selected = [lvl for lvl in (selected_levels or []) if lvl in available_levels]
+    if selected:
+        return selected
+
+    preferred = [lvl for lvl in fallback if lvl in available_levels]
+    if preferred:
+        return preferred
+
+    return [available_levels[0]]
+
+def normalize_categories_value(raw_categories):
+    """Normalise la colonne categories en liste de labels (str)."""
+    if raw_categories is None:
+        return []
+    if isinstance(raw_categories, (list, tuple, np.ndarray)):
+        return [str(cat).strip() for cat in raw_categories if str(cat).strip()]
+    if isinstance(raw_categories, str):
+        value = raw_categories.strip()
+        if not value or value in {"nan", "None", "[]"}:
+            return []
+        try:
+            parsed = ast.literal_eval(value)
+            if isinstance(parsed, (list, tuple, np.ndarray)):
+                return [str(cat).strip() for cat in parsed if str(cat).strip()]
+        except Exception:
+            pass
+        delimiter = ';' if ';' in value else ','
+        return [part.strip() for part in value.strip('[]').split(delimiter) if part.strip()]
+    return []
 
 # CSS personnalisé avec navigation améliorée
 st.markdown("""
@@ -553,11 +609,32 @@ def parse_list_column(series):
             if isinstance(x, str):
                 x = x.strip()
                 if x.startswith('[') and x.endswith(']'):
-                    return ast.literal_eval(x)
+                    try:
+                        parsed = ast.literal_eval(x)
+                        if isinstance(parsed, (list, tuple, np.ndarray)):
+                            return list(parsed)
+                        return [parsed]
+                    except Exception:
+                        # Supporte les formats de type numpy-array string:
+                        # "['PHARMA' 'HUME']" (sans virgules)
+                        quoted_tokens = re.findall(r"'([^']*)'|\"([^\"]*)\"", x)
+                        flattened = [a or b for a, b in quoted_tokens if (a or b)]
+                        if flattened:
+                            return flattened
+                        raw = x.strip('[]').strip()
+                        if not raw:
+                            return []
+                        delimiter = ';' if ';' in raw else ','
+                        return [item.strip() for item in raw.split(delimiter) if item.strip()]
                 else:
-                    return [float(i.strip()) for i in x.split(',') if i.strip()]
+                    delimiter = ';' if ';' in x else ','
+                    return [i.strip() for i in x.split(delimiter) if i.strip()]
             elif isinstance(x, list):
                 return x
+            elif isinstance(x, tuple):
+                return list(x)
+            elif isinstance(x, np.ndarray):
+                return np.asarray(x).ravel().tolist()
             return []
         except:
             return []
@@ -595,12 +672,17 @@ def get_intensity_for_sample(row, sample_name):
             intensities = ast.literal_eval(intensities)
         if isinstance(sample_names, str):
             sample_names = ast.literal_eval(sample_names)
+        sample_name = str(sample_name).strip()
+        sample_names = [str(s).strip() for s in sample_names]
         
         # Trouver l'index de l'échantillon
         if sample_name in sample_names:
             idx = sample_names.index(sample_name)
             if idx < len(intensities):
-                return intensities[idx]
+                value = intensities[idx]
+                if pd.notna(value):
+                    return float(value)
+                return 0
         
         # Si pas trouvé, retourner l'intensité générale
         return row.get('intensity', 0)
@@ -615,7 +697,8 @@ def count_unique_molecules(df, sample_filter=None, confidence_levels=None):
     filtered_df = df[df['match_name'].notna()].copy()
     
     if sample_filter:
-        filtered_df = filtered_df[filtered_df['samples'].str.contains(sample_filter, na=False)]
+        sample_filter = str(sample_filter).strip()
+        filtered_df = filtered_df[filtered_df['samples'].str.contains(sample_filter, na=False, regex=False)]
     
     if confidence_levels and 'confidence_level' in filtered_df.columns:
         filtered_df = filtered_df[filtered_df['confidence_level'].isin(confidence_levels)]
@@ -628,7 +711,8 @@ def aggregate_molecules_by_name_enhanced(df, sample_filter=None):
     filtered_df = df[df['match_name'].notna()].copy()
     
     if sample_filter:
-        filtered_df = filtered_df[filtered_df['samples'].str.contains(sample_filter, na=False)]
+        sample_filter = str(sample_filter).strip()
+        filtered_df = filtered_df[filtered_df['samples'].str.contains(sample_filter, na=False, regex=False)]
     
     if filtered_df.empty:
         return pd.DataFrame()
@@ -737,6 +821,10 @@ def load_features_data(uploaded_file):
     for col in list_columns:
         if col in df.columns:
             df[col] = parse_list_column(df[col])
+
+    # Normalisation dédiée des catégories (critique pour les facteurs de détection)
+    if 'categories' in df.columns:
+        df['categories'] = df['categories'].apply(normalize_categories_value)
     
     # Traitement des colonnes de dictionnaires
     if 'individual_scores' in df.columns:
@@ -777,7 +865,8 @@ def calculate_detection_factor(df, samples_list, confidence_levels=None):
     detection_factors = {}
     
     for sample in samples_list:
-        sample_data = df[df['samples'].str.contains(sample, na=False)]
+        sample = str(sample).strip()
+        sample_data = df[df['samples'].str.contains(sample, na=False, regex=False)]
         identified_data = sample_data[sample_data['match_name'].notna()]
         
         # Filtrer par niveau de confiance si spécifié
@@ -791,8 +880,8 @@ def calculate_detection_factor(df, samples_list, confidence_levels=None):
             unique_molecules = set()
             
             for idx, row in identified_data.iterrows():
-                categories = row.get('categories', [])
-                if isinstance(categories, list) and category in categories:
+                categories = normalize_categories_value(row.get('categories', []))
+                if category in categories:
                     unique_molecules.add(row['match_name'])
             
             detected_in_category = len(unique_molecules)
@@ -814,9 +903,13 @@ def plot_detection_factor_radar(detection_factors):
     fig = go.Figure()
     
     categories = list(DATABASE_CATEGORIES.keys())
+    max_factor = max([max(factors.values()) for factors in detection_factors.values()]) if detection_factors else 0
+    # Si les pourcentages sont très faibles, afficher en bps pour éviter l'effet "tout à 0".
+    scale = 100 if max_factor < 1 else 1
+    unit = "bps" if scale == 100 else "%"
     
     for idx, (sample, factors) in enumerate(detection_factors.items()):
-        values = [factors.get(cat, 0) for cat in categories]
+        values = [factors.get(cat, 0) * scale for cat in categories]
         
         fig.add_trace(go.Scatterpolar(
             r=values,
@@ -824,22 +917,24 @@ def plot_detection_factor_radar(detection_factors):
             fill='toself',
             name=sample,
             line=dict(width=2, color=DISTINCT_COLORS[idx % len(DISTINCT_COLORS)]),
-            opacity=0.7
+            opacity=0.7,
+            customdata=[factors.get(cat, 0) for cat in categories],
+            hovertemplate="%{theta}<br>Facteur: %{customdata:.4f}%<extra>%{fullData.name}</extra>"
         ))
     
     fig.update_layout(
         polar=dict(
             radialaxis=dict(
                 visible=True,
-                range=[0, max([max(factors.values()) for factors in detection_factors.values()]) if detection_factors else 1],
-                ticksuffix='%',
+                range=[0, (max_factor * scale) if max_factor > 0 else 1],
+                ticksuffix=f' {unit}',
                 tickfont=dict(size=12, color='#555555')  # Gris foncé visible sur les deux thèmes
             ),
             angularaxis=dict(
                 tickfont=dict(size=12, color='#555555')  # Gris foncé visible sur les deux thèmes
             )),
         showlegend=True,
-        title="Facteur de détection par catégorie et échantillon (%)<br><sub>Nombre détecté / Nombre total dans la base × 100</sub>",
+        title="Facteur de détection par catégorie et échantillon<br><sub>Nombre détecté / Nombre total dans la base × 100</sub>",
         height=600,
         font=dict(color='#555555')  # Gris foncé pour tout le texte
     )
@@ -853,7 +948,8 @@ def plot_category_distribution_radar(df, samples_list, confidence_levels=None):
     categories = list(DATABASE_CATEGORIES.keys())
     
     for idx, sample in enumerate(samples_list):
-        sample_data = df[df['samples'].str.contains(sample, na=False)]
+        sample = str(sample).strip()
+        sample_data = df[df['samples'].str.contains(sample, na=False, regex=False)]
         identified_data = sample_data[sample_data['match_name'].notna()]
         
         # Filtrer par niveau de confiance si spécifié
@@ -915,7 +1011,7 @@ def plot_level1_bubble_plot_sample(df, sample_name):
     # Sélecteur de niveaux de confiance avec gestion CORRIGÉE
     col1, col2 = st.columns([1, 3])
     with col1:
-        available_levels = sorted([1, 2, 3])  # Seulement 1, 2, 3
+        available_levels = get_available_confidence_levels(df)
         
         # Clé de session pour ce échantillon spécifique
         session_key = f"bubble_levels_{sample_name}"
@@ -923,13 +1019,14 @@ def plot_level1_bubble_plot_sample(df, sample_name):
         
         # Initialiser dans session_state si pas encore fait
         if session_key not in st.session_state:
-            st.session_state[session_key] = [1]
+            st.session_state[session_key] = sanitize_confidence_selection([1], available_levels)
+        default_levels = sanitize_confidence_selection(st.session_state[session_key], available_levels)
         
         # CORRECTION : Utiliser on_change pour éviter les conflits
         selected_levels = st.multiselect(
             "Niveaux de confiance",
             options=available_levels,
-            default=st.session_state[session_key],
+            default=default_levels,
             help="Sélectionnez les niveaux à inclure",
             key=widget_key,
             on_change=update_bubble_levels_sample,
@@ -941,9 +1038,11 @@ def plot_level1_bubble_plot_sample(df, sample_name):
             st.warning("Veuillez sélectionner au moins un niveau de confiance")
             return
         st.info(f"Niveaux sélectionnés : {', '.join(map(str, selected_levels))}")
+        if any(level >= 4 for level in selected_levels):
+            st.warning("Niveaux 4-5 inclus: résultats exploratoires/incertains.")
     
     # Filtrer les données de l'échantillon et niveaux sélectionnés
-    sample_data = df[df['samples'].str.contains(sample_name, na=False)]
+    sample_data = df[df['samples'].str.contains(str(sample_name).strip(), na=False, regex=False)]
     level_data = sample_data[sample_data['confidence_level'].isin(selected_levels)].copy()
     
     if level_data.empty:
@@ -971,7 +1070,10 @@ def plot_level1_bubble_plot_sample(df, sample_name):
         title=f"Molécules uniques niveaux {selected_levels} - Intensités spécifiques - {sample_name}",
         size_max=30,
         labels={'x': 'Échantillon', 'y': 'Molécule'},
-        color_discrete_sequence=DISTINCT_COLORS[:3]
+        color_discrete_map={
+            level: CONFIDENCE_LEVEL_META.get(level, {"color": DISTINCT_COLORS[level % len(DISTINCT_COLORS)]})["color"]
+            for level in selected_levels
+        }
     )
     
     fig.update_layout(
@@ -1277,7 +1379,8 @@ def plot_ms2_comparison_enhanced(compound_data):
 
 def plot_sample_overview(df, sample_name):
     """Vue d'ensemble d'un échantillon avec intensités spécifiques"""
-    sample_data = df[df['samples'].str.contains(sample_name, na=False)]
+    sample_name = str(sample_name).strip()
+    sample_data = df[df['samples'].str.contains(sample_name, na=False, regex=False)]
     
     col1, col2, col3, col4 = st.columns(4)
     
@@ -1291,9 +1394,11 @@ def plot_sample_overview(df, sample_name):
     
     with col3:
         if 'confidence_level' in sample_data.columns:
-            # CHANGEMENT ICI : compter les molécules uniques niveau 1
-            level1_molecules = sample_data[sample_data['confidence_level'] == 1]['match_name'].dropna().unique()
-            st.metric("Identifications niveau 1", len(level1_molecules))
+            detected_levels = sorted(pd.to_numeric(sample_data['confidence_level'], errors='coerce').dropna().astype(int).unique().tolist())
+            if detected_levels:
+                st.metric("Meilleur niveau détecté", f"Niveau {detected_levels[0]}")
+            else:
+                st.metric("Meilleur niveau détecté", "N/A")
     
     with col4:
         # Calculer l'intensité moyenne spécifique à l'échantillon si possible
@@ -1317,15 +1422,36 @@ def plot_sample_overview(df, sample_name):
 def plot_confidence_levels_distribution(df):
     """Distribution des niveaux de confiance"""
     if 'confidence_level' in df.columns:
-        conf_data = df['confidence_level'].value_counts().sort_index()
+        # Aligner le calcul avec la pipeline: molécules uniques (match_name) par niveau.
+        valid_df = df[df['match_name'].notna()].copy() if 'match_name' in df.columns else df.copy()
+        valid_df['confidence_level'] = pd.to_numeric(valid_df['confidence_level'], errors='coerce')
+        valid_df = valid_df.dropna(subset=['confidence_level'])
+        valid_df['confidence_level'] = valid_df['confidence_level'].astype(int)
+
+        if 'match_name' in valid_df.columns:
+            conf_data = valid_df.groupby('confidence_level')['match_name'].nunique().sort_index()
+        else:
+            conf_data = valid_df['confidence_level'].value_counts().sort_index()
+        conf_df = pd.DataFrame({
+            'Niveau': conf_data.index,
+            'Nombre': conf_data.values
+        })
+        conf_df['Label'] = conf_df['Niveau'].apply(
+            lambda x: CONFIDENCE_LEVEL_META.get(x, {"label": f"Niveau {x}"})["label"]
+        )
+        color_map = {
+            row['Label']: CONFIDENCE_LEVEL_META.get(row['Niveau'], {"color": DISTINCT_COLORS[row['Niveau'] % len(DISTINCT_COLORS)]})["color"]
+            for _, row in conf_df.iterrows()
+        }
         
         fig = px.bar(
-            x=conf_data.index,
-            y=conf_data.values,
-            labels={'x': 'Niveau de confiance', 'y': 'Nombre de molécules'},
-            title="Distribution des niveaux de confiance",
-            color=conf_data.index,
-            color_discrete_sequence=DISTINCT_COLORS[:len(conf_data)]
+            conf_df,
+            x='Label',
+            y='Nombre',
+            labels={'x': 'Niveau de confiance', 'y': 'Nombre de molécules uniques'},
+            title="Distribution des niveaux de confiance (molécules uniques)",
+            color='Label',
+            color_discrete_map=color_map
         )
         fig.update_layout(showlegend=False, coloraxis_showscale=False)
         return fig
@@ -1366,6 +1492,11 @@ def plot_confidence_comparison_across_samples(df, samples_list, selected_levels=
     # Filtres pour sélectionner les niveaux avec persistance CORRIGÉE
     st.subheader("🎯 Filtres de niveaux de confiance")
     
+    available_levels = get_available_confidence_levels(df)
+    if not available_levels:
+        st.warning("Aucun niveau de confiance disponible dans les données")
+        return
+
     col1, col2 = st.columns(2)
     with col1:
         # Options prédéfinies courantes
@@ -1376,6 +1507,7 @@ def plot_confidence_comparison_across_samples(df, samples_list, selected_levels=
             "Niveaux 1+2+3+4": [1, 2, 3, 4],
             "Tous les niveaux": [1, 2, 3, 4, 5]
         }
+        preset_options = {k: [lvl for lvl in v if lvl in available_levels] for k, v in preset_options.items()}
         
         # CORRECTION : Utiliser des callbacks pour éviter les doubles clics
         preset_choice = st.selectbox(
@@ -1390,10 +1522,11 @@ def plot_confidence_comparison_across_samples(df, samples_list, selected_levels=
     
     with col2:
         # Sélection manuelle CORRIGÉE
+        manual_default = sanitize_confidence_selection(st.session_state.comparison_manual_conf, available_levels)
         manual_levels = st.multiselect(
             "Sélection manuelle (remplace la sélection rapide)",
-            options=[1, 2, 3, 4, 5],
-            default=st.session_state.comparison_manual_conf,
+            options=available_levels,
+            default=manual_default,
             help="Personnalisez votre sélection de niveaux",
             key="manual_confidence_levels_fixed",
             on_change=update_comparison_manual_conf
@@ -1410,6 +1543,8 @@ def plot_confidence_comparison_across_samples(df, samples_list, selected_levels=
         return
     
     st.info(f"Niveaux sélectionnés : {', '.join(map(str, selected_levels_final))}")
+    if any(level >= 4 for level in selected_levels_final):
+        st.warning("Les niveaux 4-5 sont exploratoires/incertains. Interprétez-les avec prudence.")
     
     # Préparer les données pour le graphique
     conf_data = []
@@ -1438,7 +1573,10 @@ def plot_confidence_comparison_across_samples(df, samples_list, selected_levels=
         y='Nombre',
         color='Niveau',
         title=f"Distribution des niveaux de confiance par échantillon (molécules uniques) - Niveaux {selected_levels_final}",
-        color_discrete_sequence=DISTINCT_COLORS[:len(selected_levels_final)]
+        color_discrete_map={
+            f"Niveau {level}": CONFIDENCE_LEVEL_META.get(level, {"color": DISTINCT_COLORS[level % len(DISTINCT_COLORS)]})["color"]
+            for level in selected_levels_final
+        }
     )
     
     fig.update_layout(height=500)
@@ -1453,13 +1591,14 @@ def plot_level1_bubble_plot(df, samples_list):
     # Sélecteur de niveaux de confiance avec persistance CORRIGÉE
     col1, col2 = st.columns([1, 3])
     with col1:
-        available_levels = sorted([1, 2, 3])  # Seulement 1, 2, 3
+        available_levels = get_available_confidence_levels(df)
+        default_levels = sanitize_confidence_selection(st.session_state.comparison_bubble_levels, available_levels)
         
         # CORRECTION : Widget unique avec callback pour éviter les doubles clics
         selected_levels = st.multiselect(
             "Niveaux de confiance",
             options=available_levels,
-            default=st.session_state.comparison_bubble_levels,
+            default=default_levels,
             help="Sélectionnez les niveaux à inclure",
             key="bubble_levels_comparison_fixed",
             on_change=update_comparison_bubble_levels
@@ -1470,6 +1609,8 @@ def plot_level1_bubble_plot(df, samples_list):
             st.warning("Veuillez sélectionner au moins un niveau de confiance")
             return
         st.info(f"Niveaux sélectionnés : {', '.join(map(str, selected_levels))}")
+        if any(level >= 4 for level in selected_levels):
+            st.warning("Niveaux 4-5 inclus: résultats exploratoires/incertains.")
     
     # Filtrer les molécules des niveaux sélectionnés
     level_data = df[df['confidence_level'].isin(selected_levels)].copy()
@@ -1520,7 +1661,10 @@ def plot_level1_bubble_plot(df, samples_list):
         hover_data=['Intensité'],
         title=f"Intensités des molécules uniques niveaux {selected_levels} par échantillon",
         size_max=30,
-        color_discrete_sequence=DISTINCT_COLORS[:3]
+        color_discrete_map={
+            level: CONFIDENCE_LEVEL_META.get(level, {"color": DISTINCT_COLORS[level % len(DISTINCT_COLORS)]})["color"]
+            for level in selected_levels
+        }
     )
     
     fig.update_layout(
@@ -3531,6 +3675,7 @@ def main():
     # Navigation avec design moderne
     tab_mapping = {
         "🏠 Accueil": "home",
+        "🚀 Pipeline": "pipeline",
         "📊 Vue d'ensemble": "overview",
         "🔍 Analyse par échantillon": "sample",
         "🧬 Molécules individuelles": "molecules",
@@ -3621,6 +3766,13 @@ def main():
             st.markdown("---")
             show_home_page()
     
+    elif st.session_state.active_tab == "pipeline":
+        try:
+            render_pipeline_page()
+        except Exception as e:
+            st.error(f"❌ Erreur dans l'onglet Pipeline : {e}")
+            st.code(traceback.format_exc(), language="text")
+
     elif st.session_state.active_tab == "overview":
         if features_df is None:
             st.warning("⚠️ Veuillez charger le fichier **features_complete.csv** pour accéder à l'analyse")
@@ -3728,13 +3880,38 @@ def main():
             st.info("ℹ️ Affichage automatique des molécules uniques (une ligne par molécule avec adduits groupés)")
             
             # Sélection de l'échantillon
-            samples_list = list(set([s for samples in features_df['samples'].dropna() 
-                                   for s in samples.split(',')]))
+            samples_list = sorted(list(set([
+                s.strip() for samples in features_df['samples'].dropna()
+                for s in samples.split(',') if str(s).strip()
+            ])))
             
             selected_sample = st.selectbox("Choisir un échantillon", samples_list, key="sample_selector_main")
             
             if selected_sample:
                 sample_data = plot_sample_overview(features_df, selected_sample)
+                sample_identified = sample_data[sample_data['match_name'].notna()]
+
+                st.subheader(f"📋 Récapitulatif molécules détectées - {selected_sample}")
+                if not sample_identified.empty:
+                    sample_summary = aggregate_molecules_by_name_enhanced(sample_identified, selected_sample)
+                    if not sample_summary.empty:
+                        recap_columns = [
+                            'match_name', 'confidence_level', 'sample_specific_intensity',
+                            'mz', 'retention_time', 'categories'
+                        ]
+                        available_recap_columns = [col for col in recap_columns if col in sample_summary.columns]
+                        recap_df = sample_summary[available_recap_columns].copy()
+                        sort_cols = [col for col in ['confidence_level', 'sample_specific_intensity'] if col in recap_df.columns]
+                        if sort_cols:
+                            recap_df = recap_df.sort_values(
+                                by=sort_cols,
+                                ascending=[True, False][:len(sort_cols)]
+                            )
+                        st.dataframe(recap_df, width="stretch")
+                    else:
+                        st.info("Aucune molécule identifiée pour cet échantillon.")
+                else:
+                    st.info("Aucune molécule identifiée pour cet échantillon.")
                 
                 # Graphiques
                 col1, col2 = st.columns(2)
@@ -3776,8 +3953,6 @@ def main():
                 # Tableau détaillé
                 st.subheader(f"Molécules uniques - {selected_sample}")
                 
-                sample_identified = sample_data[sample_data['match_name'].notna()]
-                
                 if not sample_identified.empty:
                     aggregated_display = aggregate_molecules_by_name_enhanced(sample_identified, selected_sample)
                     
@@ -3800,10 +3975,15 @@ def main():
                             
                             with col2:
                                 if 'confidence_level' in aggregated_display.columns:
+                                    available_conf_levels = get_available_confidence_levels(aggregated_display)
+                                    default_conf_levels = sanitize_confidence_selection(
+                                        st.session_state.sample_conf_levels,
+                                        available_conf_levels
+                                    )
                                     conf_levels = st.multiselect(
                                         "Niveaux de confiance",
-                                        options=[1, 2, 3, 4, 5],
-                                        default=st.session_state.sample_conf_levels,
+                                        options=available_conf_levels,
+                                        default=default_conf_levels,
                                         key="conf_levels_sample_widget",
                                         on_change=update_sample_conf_levels
                                     )
@@ -4130,13 +4310,19 @@ def main():
             """, unsafe_allow_html=True)
             
             st.subheader("⚙️ Options de filtrage")
+            available_conf_levels = get_available_confidence_levels(features_df)
             
             col1, col2 = st.columns(2)
             with col1:
+                detection_default_levels = sanitize_confidence_selection(
+                    st.session_state.detection_conf_levels,
+                    available_conf_levels,
+                    fallback=[1, 2, 3, 4, 5]
+                )
                 confidence_levels_choice = st.multiselect(
                     "Inclure les niveaux de confiance",
-                    options=[1, 2, 3, 4, 5],
-                    default=st.session_state.detection_conf_levels,
+                    options=available_conf_levels,
+                    default=detection_default_levels,
                     key="conf_levels_detection_widget",
                     on_change=update_detection_conf_levels
                 )
@@ -4158,15 +4344,16 @@ def main():
                 detection_df_data = []
                 for sample, factors in detection_factors.items():
                     for category, factor in factors.items():
+                        sample_str = str(sample).strip()
                         sample_data = features_df[
-                            (features_df['samples'].str.contains(sample, na=False)) & 
+                            (features_df['samples'].str.contains(sample_str, na=False, regex=False)) & 
                             (features_df['match_name'].notna()) &
                             (features_df['confidence_level'].isin(st.session_state.detection_conf_levels) if 'confidence_level' in features_df.columns else True)
                         ]
                         
                         unique_molecules = set()
                         for idx, row in sample_data.iterrows():
-                            if isinstance(row.get('categories', []), list) and category in row.get('categories', []):
+                            if category in normalize_categories_value(row.get('categories', [])):
                                 unique_molecules.add(row['match_name'])
                         
                         detected = len(unique_molecules)
@@ -4209,7 +4396,7 @@ def main():
                 
                 st.dataframe(
                     filtered_detection_df.style.format({
-                        'Facteur_détection_%': '{:.2f}%'
+                        'Facteur_détection_%': '{:.4f}%'
                     }).background_gradient(subset=['Facteur_détection_%'], cmap='RdYlGn'),
                     width="stretch"
                 )
@@ -4234,10 +4421,15 @@ def main():
             
             st.subheader("📊 Distribution des catégories par échantillon")
             
+            radar_default_levels = sanitize_confidence_selection(
+                st.session_state.detection_radar_conf_levels,
+                available_conf_levels,
+                fallback=[1, 2, 3, 4, 5]
+            )
             confidence_levels_radar = st.multiselect(
                 "Niveaux de confiance pour le radar des catégories",
-                options=[1, 2, 3, 4, 5],
-                default=st.session_state.detection_radar_conf_levels,
+                options=available_conf_levels,
+                default=radar_default_levels,
                 key="conf_levels_radar_widget",
                 on_change=update_detection_radar_conf_levels
             )
@@ -4271,10 +4463,11 @@ def main():
                     
                     conf_counts = {}
                     if 'confidence_level' in sample_data.columns:
-                        for level in range(1, 5):
+                        available_sample_levels = get_available_confidence_levels(sample_data)
+                        for level in available_sample_levels:
                             level_molecules = sample_data[sample_data['confidence_level'] == level]['match_name'].dropna().unique()
                             conf_counts[f'Niveau_{level}'] = len(level_molecules)
-                        conf_counts['Niveau_5'] = non_identified
+                        conf_counts['Non_identifiées'] = non_identified
                     
                     total_sample_intensity = 0
                     count = 0
@@ -4355,7 +4548,10 @@ def main():
                 selected_metrics = st.multiselect(
                     "Métriques pour le radar",
                     available_metrics,
-                    default=st.session_state.comparison_radar_metrics if st.session_state.comparison_radar_metrics else ['Taux_identification_%', 'Niveau_1', 'Niveau_2'][:min(3, len(available_metrics))],
+                    default=st.session_state.comparison_radar_metrics if st.session_state.comparison_radar_metrics else [
+                        metric for metric in ['Taux_identification_%', 'Niveau_1', 'Niveau_2']
+                        if metric in available_metrics
+                    ][:min(3, len(available_metrics))],
                     key="metrics_radar_comparison_widget",
                     on_change=update_comparison_radar_metrics
                 )
@@ -4398,10 +4594,16 @@ def main():
 
                 with col1:
                     if 'confidence_level' in features_df.columns:
+                        available_conf_levels = get_available_confidence_levels(features_df)
+                        jaccard_default_levels = sanitize_confidence_selection(
+                            st.session_state.comparison_jaccard_conf,
+                            available_conf_levels,
+                            fallback=[1, 2, 3]
+                        )
                         confidence_levels_jaccard = st.multiselect(
                             "Filtrer par niveau de confiance",
-                            options=[1, 2, 3, 4, 5],
-                            default=st.session_state.comparison_jaccard_conf,
+                            options=available_conf_levels,
+                            default=jaccard_default_levels,
                             key="conf_levels_jaccard_widget",
                             on_change=update_comparison_jaccard_conf
                         )
@@ -4951,10 +5153,16 @@ def main():
                 )
                 
                 if 'confidence_level' in features_df.columns:
+                    available_conf_levels = get_available_confidence_levels(features_df)
+                    export_default_levels = sanitize_confidence_selection(
+                        st.session_state.reports_conf_levels,
+                        available_conf_levels,
+                        fallback=[1, 2, 3]
+                    )
                     export_conf_levels = st.multiselect(
                         "Niveaux de confiance à exporter",
-                        options=[1, 2, 3, 4, 5],
-                        default=st.session_state.reports_conf_levels,
+                        options=available_conf_levels,
+                        default=export_default_levels,
                         key="export_conf_levels_widget",
                         on_change=update_reports_conf_levels
                     )

@@ -8,4 +8,9 @@ scikit-learn
 scipy
 networkx
 xlsxwriter
-
+deimos
+tables
+psutil
+tqdm
+pyarrow
+h5py
