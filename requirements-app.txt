@@ -1,0 +1,6 @@
+# Dépendances propres à l'interface Streamlit
+# À installer dans l'environnement Python du moteur.
+
+streamlit==1.40.2
+networkx==3.2.1
+XlsxWriter==3.2.0
