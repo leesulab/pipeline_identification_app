@@ -3466,7 +3466,7 @@ def show_home_page():
     ])
     
     # Affichage du tableau
-    st.dataframe(db_df, width="stretch")
+    st.dataframe(db_df, use_container_width=True)
     
     # Graphique de la distribution
     fig_db = px.pie(
@@ -3699,7 +3699,7 @@ def main():
             
             # Créer un bouton stylé
             if st.button(f"{icon}\n{label}", key=f"nav_{tab_id}", 
-                        width="stretch",
+                        use_container_width=True,
                         help=f"Aller à {label}"):
                 st.session_state.active_tab = tab_id
                 selected_tab = tab_name
