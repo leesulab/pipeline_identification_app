@@ -631,37 +631,175 @@ def render_execution_ui(imports: dict):
             st.session_state["pipeline_step"] = 0
             st.rerun()
 
-    # Affichage des résultats intermédiaires
+    # Affichage du résultat structuré du moteur
     results = st.session_state.get("pipeline_results", {})
+
     if results:
         st.divider()
-        st.subheader("📊 Résultats intermédiaires")
+        st.subheader("📊 Résultats de l'exécution")
 
-        if "sample_results" in results:
-            sample_results = results["sample_results"]
-            stats_data = []
-            for name, df in sample_results.items():
-                if isinstance(df, pd.DataFrame) and not df.empty:
-                    stats_data.append({
-                        "Échantillon": name,
-                        "Pics": len(df),
-                        "CCS min": f"{df['CCS'].min():.1f}" if "CCS" in df.columns else "N/A",
-                        "CCS max": f"{df['CCS'].max():.1f}" if "CCS" in df.columns else "N/A",
-                        "m/z min": f"{df['mz'].min():.3f}",
-                        "m/z max": f"{df['mz'].max():.3f}",
-                    })
-            if stats_data:
-                st.dataframe(pd.DataFrame(stats_data), use_container_width=True)
+        status = results.get("status", "inconnu")
+        executed_steps = results.get("steps", [])
+        sample_count = results.get("sample_count", 0)
+        duration_seconds = results.get(
+            "duration_seconds",
+            0,
+        )
 
-        # Lien vers les fichiers de sortie
-        Config = imports["Config"]
-        output_dir = Config.PATHS.OUTPUT_DIR / "feature_matrix"
-        if output_dir.exists():
-            output_files = list(output_dir.glob("*"))
-            if output_files:
-                st.markdown("**Fichiers de sortie :**")
-                for f in sorted(output_files):
-                    st.caption(f"  📄 {f.name} ({f.stat().st_size / 1024:.0f} KB)")
+        col_status, col_samples, col_duration = st.columns(3)
+
+        with col_status:
+            st.metric(
+                "Statut",
+                "Succès" if status == "success" else status,
+            )
+
+        with col_samples:
+            st.metric(
+                "Échantillons",
+                sample_count,
+            )
+
+        with col_duration:
+            st.metric(
+                "Durée",
+                f"{duration_seconds:.1f} s",
+            )
+
+        if executed_steps:
+            st.markdown(
+                "**Étapes exécutées :** "
+                + " → ".join(executed_steps)
+            )
+
+        step_results = results.get("step_results", {})
+
+        if step_results:
+            st.markdown("### Résultats par étape")
+
+            rows = []
+
+            for step_id, step_result in step_results.items():
+                if not isinstance(step_result, dict):
+                    continue
+
+                details = []
+
+                for key, value in step_result.items():
+                    if key.endswith("_file") or key.endswith("_dir"):
+                        continue
+
+                    if isinstance(value, (str, int, float, bool)):
+                        details.append(f"{key}={value}")
+
+                rows.append({
+                    "Étape": step_id,
+                    "Détails": ", ".join(details) or "Terminée",
+                })
+
+            if rows:
+                st.dataframe(
+                    pd.DataFrame(rows),
+                    use_container_width=True,
+                    hide_index=True,
+                )
+
+        output_paths = []
+
+        def add_output_path(label, raw_path):
+            if not raw_path:
+                return
+
+            path = Path(raw_path)
+
+            if path.exists():
+                output_paths.append((label, path))
+
+        add_output_path(
+            "Journal de la pipeline",
+            results.get("log_file"),
+        )
+
+        for step_id, step_result in step_results.items():
+            if not isinstance(step_result, dict):
+                continue
+
+            for key, value in step_result.items():
+                if key.endswith("_file") and value:
+                    add_output_path(
+                        f"{step_id} · {key}",
+                        value,
+                    )
+
+                elif isinstance(value, list):
+                    for item in value:
+                        if isinstance(item, str):
+                            add_output_path(
+                                f"{step_id} · fichier généré",
+                                item,
+                            )
+
+        for item in results.get("generated_files", []):
+            if isinstance(item, str):
+                add_output_path(
+                    "Fichier généré",
+                    item,
+                )
+
+        unique_paths = []
+        seen_paths = set()
+
+        for label, path in output_paths:
+            resolved = str(path.resolve())
+
+            if resolved not in seen_paths:
+                seen_paths.add(resolved)
+                unique_paths.append((label, path))
+
+        if unique_paths:
+            st.markdown("### Fichiers produits")
+
+            for label, path in unique_paths:
+                size_text = ""
+
+                if path.is_file():
+                    size_kb = path.stat().st_size / 1024
+                    size_text = f" · {size_kb:.1f} Ko"
+
+                st.caption(
+                    f"📄 {label} : {path}{size_text}"
+                )
+
+        output_dir_value = results.get("output_dir")
+
+        if output_dir_value:
+            output_dir = Path(output_dir_value)
+
+            if output_dir.exists():
+                with st.expander(
+                    "Afficher tous les fichiers du dossier de sortie"
+                ):
+                    all_output_files = sorted(
+                        path
+                        for path in output_dir.rglob("*")
+                        if path.is_file()
+                    )
+
+                    if all_output_files:
+                        for path in all_output_files:
+                            relative_path = path.relative_to(
+                                output_dir
+                            )
+                            size_kb = path.stat().st_size / 1024
+
+                            st.caption(
+                                f"📄 {relative_path} "
+                                f"({size_kb:.1f} Ko)"
+                            )
+                    else:
+                        st.info(
+                            "Aucun fichier n'a encore été produit."
+                        )
 
 
 def render_logs():
