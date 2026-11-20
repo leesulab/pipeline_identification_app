@@ -5,6 +5,7 @@ Module d'exécution de la pipeline d'identification MS directement depuis Stream
 Appelle les fonctions Python du package pipeline_identification_ms.
 """
 
+import importlib.util
 import sys
 import time
 import traceback
@@ -40,6 +41,44 @@ def _ensure_pipeline_on_path():
     if pipeline_dir.exists() and str(pipeline_dir) not in sys.path:
         sys.path.insert(0, str(pipeline_dir))
     return pipeline_dir
+
+
+def _get_reusable_pipeline_runner():
+    """Charge le moteur réutilisable de pipeline_identification_ms."""
+    pipeline_dir = _ensure_pipeline_on_path()
+    main_file = pipeline_dir / "main.py"
+
+    if not main_file.exists():
+        raise FileNotFoundError(
+            f"Point d'entrée de la pipeline introuvable : {main_file}"
+        )
+
+    module_name = "pipeline_identification_ms_main"
+    module = sys.modules.get(module_name)
+
+    if module is None:
+        spec = importlib.util.spec_from_file_location(
+            module_name,
+            main_file,
+        )
+
+        if spec is None or spec.loader is None:
+            raise ImportError(
+                f"Impossible de charger le moteur depuis {main_file}"
+            )
+
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[module_name] = module
+        spec.loader.exec_module(module)
+
+    runner = getattr(module, "run_pipeline", None)
+
+    if runner is None or not callable(runner):
+        raise AttributeError(
+            f"La fonction run_pipeline est absente de {main_file}"
+        )
+
+    return runner
 
 
 def _get_pipeline_imports():
@@ -364,14 +403,22 @@ def render_file_upload(imports: dict):
 # ---------------------------------------------------------------------------
 
 PIPELINE_STEPS = [
-    "1. Chargement calibration CCS",
-    "2. Initialisation identification",
-    "3. Détection fichiers",
-    "4. Traitement des blanks",
-    "5. Traitement des échantillons (réplicats + blank + CCS)",
-    "6. Alignement des features & identification",
-    "7. Génération des visualisations",
-    "8. Analyse des catégories",
+    ("calibration", "1. Chargement calibration CCS"),
+    ("identification", "2. Initialisation identification"),
+    ("file_discovery", "3. Détection des fichiers"),
+    ("blanks", "4. Traitement des blanks"),
+    (
+        "samples",
+        "5. Traitement des échantillons "
+        "(réplicats + blank + CCS)",
+    ),
+    (
+        "feature_alignment",
+        "6. Alignement des features & identification",
+    ),
+    ("visualizations", "7. Génération des visualisations"),
+    ("similarities", "8. Analyse des similarités"),
+    ("categories", "9. Analyse des catégories"),
 ]
 
 
@@ -400,327 +447,108 @@ def _capture_output(func, *args, **kwargs):
 
 
 def run_pipeline(imports: dict, selected_steps: list):
-    """Exécute les étapes sélectionnées de la pipeline."""
+    """Exécute les étapes sélectionnées avec le moteur partagé."""
     Config = imports["Config"]
     _apply_config_overrides(Config)
 
     st.session_state["pipeline_running"] = True
     st.session_state["pipeline_logs"] = []
-    results = st.session_state.get("pipeline_results", {})
 
-    progress_bar = st.progress(0)
+    progress_bar = st.progress(0.0)
     status_area = st.empty()
     log_area = st.empty()
 
-    total_steps = len(selected_steps)
+    working_dir = st.session_state.get(
+        "working_dir",
+        str(Config.PATHS.BASE_DIR),
+    )
+
+    def refresh_logs():
+        log_area.code(
+            "\n".join(st.session_state["pipeline_logs"]),
+            language="text",
+        )
+
+    def progress_callback(event):
+        step = event.get("step", "pipeline")
+        status = event.get("status", "running")
+        message = event.get("message", "")
+        progress = event.get("progress")
+
+        _log(
+            f"[{step}] {status}: {message}"
+        )
+
+        if progress is not None:
+            progress_bar.progress(
+                max(0.0, min(1.0, float(progress)))
+            )
+
+        if status == "error":
+            status_area.error(message)
+        elif status == "success":
+            status_area.success(message)
+        else:
+            status_area.info(message)
+
+        refresh_logs()
 
     try:
-        # --- Étape 1 : Calibration CCS ---
-        if 0 in selected_steps:
-            step_idx = selected_steps.index(0)
-            progress_bar.progress((step_idx) / total_steps)
-            status_area.info("📈 Chargement des données de calibration CCS...")
-            _log("=== Chargement calibration CCS ===")
+        engine_runner = _get_reusable_pipeline_runner()
 
-            calibration_file = Config.PATHS.INPUT_CALIBRANTS / "CCS_calibration_data.csv"
-            if not calibration_file.exists():
-                csv_files = list(Config.PATHS.INPUT_CALIBRANTS.glob("*.csv"))
-                if csv_files:
-                    calibration_file = csv_files[0]
-                    _log(f"Fichier de calibration trouvé : {calibration_file.name}")
-                else:
-                    raise FileNotFoundError(f"Aucun fichier de calibration dans {Config.PATHS.INPUT_CALIBRANTS}")
+        _log(
+            "Étapes sélectionnées : "
+            + ", ".join(selected_steps)
+        )
+        _log(f"Dossier de travail : {working_dir}")
+        refresh_logs()
 
-            CCSCalibrator = imports["CCSCalibrator"]
-            calibrator = _capture_output(CCSCalibrator, str(calibration_file))
-            results["calibrator"] = calibrator
-            _log(f"✓ Calibration chargée depuis {calibration_file.name}")
-            log_area.code("\n".join(st.session_state["pipeline_logs"]), language="text")
+        output_buffer = StringIO()
 
-        # --- Étape 2 : Initialisation identification ---
-        if 1 in selected_steps:
-            step_idx = selected_steps.index(1)
-            progress_bar.progress((step_idx) / total_steps)
-            status_area.info("📚 Initialisation de l'identification...")
-            _log("=== Initialisation identification ===")
-
-            CompoundIdentifier = imports["CompoundIdentifier"]
-            identifier = _capture_output(CompoundIdentifier)
-            results["identifier"] = identifier
-            _log(f"✓ Base de données chargée ({len(identifier.db)} composés)")
-            log_area.code("\n".join(st.session_state["pipeline_logs"]), language="text")
-
-        # --- Étape 3 : Détection fichiers ---
-        if 2 in selected_steps:
-            step_idx = selected_steps.index(2)
-            progress_bar.progress((step_idx) / total_steps)
-            status_area.info("📁 Recherche des fichiers...")
-            _log("=== Détection des fichiers ===")
-
-            ReplicateHandler = imports["ReplicateHandler"]
-            replicate_handler = ReplicateHandler()
-
-            blank_files = sorted(Config.PATHS.INPUT_BLANKS.glob("*.parquet"))
-            _log(f"Blanks trouvés : {len(blank_files)}")
-            for f in blank_files:
-                _log(f"  • {f.name}")
-            results["blank_files"] = blank_files
-
-            sample_files = sorted(Config.PATHS.INPUT_SAMPLES.glob("*.parquet"))
-            if not sample_files:
-                raise ValueError(f"Aucun échantillon dans {Config.PATHS.INPUT_SAMPLES}")
-
-            replicate_groups = replicate_handler.group_replicates(sample_files)
-            _log(f"Échantillons : {len(replicate_groups)} groupes")
-            for name, reps in replicate_groups.items():
-                _log(f"  • {name}: {len(reps)} réplicat(s)")
-
-            results["sample_files"] = sample_files
-            results["replicate_groups"] = replicate_groups
-            log_area.code("\n".join(st.session_state["pipeline_logs"]), language="text")
-
-        # --- Étape 4 : Traitement des blanks ---
-        if 3 in selected_steps:
-            step_idx = selected_steps.index(3)
-            progress_bar.progress((step_idx) / total_steps)
-            status_area.info("🫧 Traitement des blanks...")
-            _log("=== Traitement des blanks ===")
-
-            BlankProcessor = imports["BlankProcessor"]
-            blank_processor = BlankProcessor()
-
-            blank_files = results.get("blank_files", sorted(Config.PATHS.INPUT_BLANKS.glob("*.parquet")))
-
-            blank_peaks = pd.DataFrame()
-            if blank_files:
-                blank_peaks = _capture_output(
-                    blank_processor.process_blank_with_replicates,
-                    blank_files[0].stem,
-                    blank_files,
-                    Config.PATHS.INTERMEDIATE_DIR / "blanks",
-                )
-                _log(f"✓ {len(blank_peaks)} pics blanks détectés")
-            else:
-                _log("ℹ️ Aucun blank trouvé, étape ignorée")
-
-            results["blank_peaks"] = blank_peaks
-            log_area.code("\n".join(st.session_state["pipeline_logs"]), language="text")
-
-        # --- Étape 5 : Traitement des échantillons ---
-        if 4 in selected_steps:
-            step_idx = selected_steps.index(4)
-            progress_bar.progress((step_idx) / total_steps)
-            status_area.info("🧪 Traitement des échantillons...")
-            _log("=== Traitement des échantillons ===")
-
-            ReplicateProcessor = imports["ReplicateProcessor"]
-            BlankProcessor = imports["BlankProcessor"]
-            IOHandler = imports["IOHandler"]
-
-            replicate_processor = ReplicateProcessor()
-            blank_processor = BlankProcessor()
-            io_handler = IOHandler()
-
-            calibrator = results.get("calibrator")
-            if calibrator is None:
-                CCSCalibrator = imports["CCSCalibrator"]
-                calibration_file = Config.PATHS.INPUT_CALIBRANTS / "CCS_calibration_data.csv"
-                csv_files = list(Config.PATHS.INPUT_CALIBRANTS.glob("*.csv"))
-                if csv_files:
-                    calibration_file = csv_files[0]
-                calibrator = CCSCalibrator(str(calibration_file))
-                results["calibrator"] = calibrator
-
-            blank_peaks = results.get("blank_peaks", pd.DataFrame())
-            replicate_groups = results.get("replicate_groups")
-            if replicate_groups is None:
-                ReplicateHandler = imports["ReplicateHandler"]
-                rh = ReplicateHandler()
-                sample_files = sorted(Config.PATHS.INPUT_SAMPLES.glob("*.parquet"))
-                replicate_groups = rh.group_replicates(sample_files)
-
-            output_base_dir = Config.PATHS.INTERMEDIATE_SAMPLES
-            sample_results = {}
-            total = len(replicate_groups)
-
-            for i, (base_name, replicates) in enumerate(replicate_groups.items()):
-                _log(f"\n--- {base_name} ({i+1}/{total}) ---")
-                progress_bar.progress((step_idx + (i / total)) / total_steps)
-
-                try:
-                    common_peaks = _capture_output(
-                        replicate_processor.process_sample_with_replicates,
-                        base_name, replicates, output_base_dir,
-                    )
-
-                    if common_peaks.empty:
-                        _log(f"✗ Pas de pics pour {base_name}")
-                        continue
-
-                    if not blank_peaks.empty:
-                        clean_peaks = _capture_output(
-                            blank_processor.subtract_blank_peaks, common_peaks, blank_peaks
-                        )
-                    else:
-                        clean_peaks = common_peaks
-
-                    if clean_peaks.empty:
-                        _log(f"✗ Pas de pics après blank pour {base_name}")
-                        continue
-
-                    peaks_with_ccs = _capture_output(calibrator.calculate_ccs, clean_peaks)
-
-                    if not peaks_with_ccs.empty:
-                        _log(f"✓ {base_name}: {len(peaks_with_ccs)} pics, CCS [{peaks_with_ccs['CCS'].min():.1f} - {peaks_with_ccs['CCS'].max():.1f}] Å²")
-                        output_dir = output_base_dir / base_name / "ms1"
-                        output_dir.mkdir(parents=True, exist_ok=True)
-                        io_handler.save_results(peaks_with_ccs, output_dir / "common_peaks.parquet")
-                        sample_results[base_name] = peaks_with_ccs
-
-                except Exception as e:
-                    _log(f"❌ Erreur {base_name}: {e}")
-                    _log(traceback.format_exc())
-
-                log_area.code("\n".join(st.session_state["pipeline_logs"]), language="text")
-
-            results["sample_results"] = sample_results
-            _log(f"\n✓ {len(sample_results)}/{total} échantillons traités avec succès")
-            log_area.code("\n".join(st.session_state["pipeline_logs"]), language="text")
-
-        # --- Étape 6 : Feature matrix & identification ---
-        if 5 in selected_steps:
-            step_idx = selected_steps.index(5)
-            progress_bar.progress((step_idx) / total_steps)
-            status_area.info("📊 Alignement des features & identification...")
-            _log("=== Alignement des features & identification ===")
-
-            FeatureProcessor = imports["FeatureProcessor"]
-            feature_processor = FeatureProcessor()
-
-            identifier = results.get("identifier")
-            if identifier is None:
-                CompoundIdentifier = imports["CompoundIdentifier"]
-                identifier = CompoundIdentifier()
-                results["identifier"] = identifier
-
-            _capture_output(
-                feature_processor.create_feature_matrix,
-                input_dir=Config.PATHS.INTERMEDIATE_SAMPLES,
-                output_dir=Config.PATHS.OUTPUT_DIR / "feature_matrix",
-                identifier=identifier,
+        with redirect_stdout(output_buffer), redirect_stderr(
+            output_buffer
+        ):
+            result = engine_runner(
+                base_dir=working_dir,
+                steps=selected_steps,
+                progress_callback=progress_callback,
             )
-            _log("✓ Matrice des features créée et identifications terminées")
-            log_area.code("\n".join(st.session_state["pipeline_logs"]), language="text")
 
-        # --- Étape 7 : Visualisations ---
-        if 6 in selected_steps:
-            step_idx = selected_steps.index(6)
-            progress_bar.progress((step_idx) / total_steps)
-            status_area.info("📊 Génération des visualisations...")
-            _log("=== Génération des visualisations ===")
+        captured_output = output_buffer.getvalue()
 
-            import matplotlib.pyplot as plt
+        if captured_output.strip():
+            for line in captured_output.strip().splitlines():
+                _log(line)
 
-            output_dir = Config.PATHS.OUTPUT_DIR
-            identifications_file = output_dir / "feature_matrix" / "features_complete.parquet"
-            if identifications_file.exists():
-                try:
-                    plot_funcs = {
-                        "plot_unique_molecules_per_sample": imports.get("plot_unique_molecules_per_sample"),
-                        "plot_level1_molecules_per_sample": imports.get("plot_level1_molecules_per_sample"),
-                        "plot_sample_similarity_heatmap": imports.get("plot_sample_similarity_heatmap"),
-                        "plot_level1_molecule_distribution_bubble": imports.get("plot_level1_molecule_distribution_bubble"),
-                    }
-
-                    for func_name, func in plot_funcs.items():
-                        if func is not None:
-                            try:
-                                fig = _capture_output(func, output_dir)
-                                if fig is not None:
-                                    fig.savefig(
-                                        output_dir / f"{func_name}.png",
-                                        bbox_inches="tight", dpi=300,
-                                    )
-                                    plt.close(fig)
-                                    _log(f"  ✓ {func_name}")
-                            except Exception as ve:
-                                _log(f"  ⚠️ {func_name}: {ve}")
-
-                    # Heatmaps par niveaux de confiance
-                    heatmap_func = imports.get("plot_sample_similarity_heatmap_by_confidence")
-                    if heatmap_func is not None:
-                        for levels, suffix in [
-                            ([1], "level1"),
-                            ([1, 2], "level12"),
-                            ([1, 2, 3], "level123"),
-                        ]:
-                            try:
-                                fig = _capture_output(
-                                    heatmap_func, output_dir,
-                                    confidence_levels=levels,
-                                    title_suffix=f" - Niveaux {','.join(map(str, levels))}",
-                                )
-                                if fig is not None:
-                                    fig.savefig(
-                                        output_dir / f"sample_similarity_heatmap_{suffix}.png",
-                                        bbox_inches="tight", dpi=300,
-                                    )
-                                    plt.close(fig)
-                                    _log(f"  ✓ heatmap {suffix}")
-                            except Exception as ve:
-                                _log(f"  ⚠️ heatmap {suffix}: {ve}")
-
-                    # Analyse des clusters
-                    cluster_func = imports.get("analyze_and_save_clusters")
-                    if cluster_func is not None:
-                        try:
-                            _capture_output(cluster_func, output_dir)
-                            _log("  ✓ analyze_and_save_clusters")
-                        except Exception as ve:
-                            _log(f"  ⚠️ analyze_and_save_clusters: {ve}")
-
-                    _log("✓ Visualisations générées")
-                except Exception as e:
-                    _log(f"⚠️ Erreur visualisations : {e}")
-            else:
-                _log("⚠️ Fichier features_complete.parquet non trouvé, visualisations ignorées")
-
-            log_area.code("\n".join(st.session_state["pipeline_logs"]), language="text")
-
-        # --- Étape 8 : Analyse des catégories ---
-        if 7 in selected_steps:
-            step_idx = selected_steps.index(7)
-            progress_bar.progress((step_idx) / total_steps)
-            status_area.info("📊 Analyse des catégories de molécules...")
-            _log("=== Analyse des catégories ===")
-
-            output_dir = Config.PATHS.OUTPUT_DIR
-            cat_func = imports.get("analyze_categories")
-            if cat_func is not None:
-                try:
-                    _capture_output(cat_func, output_dir)
-                    _log("✓ Analyse des catégories terminée")
-                except Exception as e:
-                    _log(f"⚠️ Erreur analyse catégories : {e}")
-            else:
-                _log("⚠️ Fonction analyze_categories non disponible")
-
-            log_area.code("\n".join(st.session_state["pipeline_logs"]), language="text")
+        st.session_state["pipeline_results"] = result
 
         progress_bar.progress(1.0)
-        status_area.success("✅ Pipeline terminée !")
-        _log("\n=== Pipeline terminée ===")
-        log_area.code("\n".join(st.session_state["pipeline_logs"]), language="text")
+        status_area.success(
+            "✅ Étapes sélectionnées terminées"
+        )
 
-    except Exception as e:
-        status_area.error(f"❌ Erreur : {e}")
-        _log(f"❌ ERREUR : {e}")
+        _log("=== Exécution terminée avec succès ===")
+        refresh_logs()
+
+    except Exception as error:
+        captured_output = (
+            output_buffer.getvalue()
+            if "output_buffer" in locals()
+            else ""
+        )
+
+        if captured_output.strip():
+            for line in captured_output.strip().splitlines():
+                _log(line)
+
+        _log(f"❌ ERREUR : {error}")
         _log(traceback.format_exc())
-        log_area.code("\n".join(st.session_state["pipeline_logs"]), language="text")
+
+        status_area.error(f"❌ Erreur : {error}")
+        refresh_logs()
 
     finally:
         st.session_state["pipeline_running"] = False
-        st.session_state["pipeline_results"] = results
 
 
 # ---------------------------------------------------------------------------
@@ -773,10 +601,17 @@ def render_execution_ui(imports: dict):
     st.markdown("**Sélectionner les étapes à exécuter :**")
     selected = []
     cols = st.columns(2)
-    for i, step_name in enumerate(PIPELINE_STEPS):
+
+    for i, (step_id, step_label) in enumerate(
+        PIPELINE_STEPS
+    ):
         with cols[i % 2]:
-            if st.checkbox(step_name, value=True, key=f"step_{i}"):
-                selected.append(i)
+            if st.checkbox(
+                step_label,
+                value=True,
+                key=f"step_{step_id}",
+            ):
+                selected.append(step_id)
 
     st.divider()
 
